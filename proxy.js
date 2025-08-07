@@ -44,45 +44,30 @@ app.get('/stations', async (req, res) => {
 // Available time series for a station
 app.get('/available-timeseries', async (req, res) => {
   const sourceId = req.query.source;
-  if (!sourceId) return res.status(400).json({ error: 'Missing source ID' });
+  const auth = Buffer.from(`${username}:${password}`).toString('base64');
+  const elements = req.query.elements; // optional
 
-  const elements = [
-    'precipitation_amount',
-    'sum(duration_of_precipitation P1D)',
-    'sum(duration_of_precipitation PT10M)',
-    'sum(duration_of_precipitation PT1H)',
-    'sum(duration_of_precipitation PT1M)',
-    'sum(precipitation_amount P1D)',
-    'sum(precipitation_amount P1M)',
-    'sum(precipitation_amount P1Y)',
-    'sum(precipitation_amount P30D)',
-    'sum(precipitation_amount P3M)',
-    'sum(precipitation_amount P6M)',
-    'sum(precipitation_amount PT10M)',
-    'sum(precipitation_amount PT12H)',
-    'sum(precipitation_amount PT15H)',
-    'sum(precipitation_amount PT18H)',
-    'sum(precipitation_amount PT1H)',
-    'sum(precipitation_amount PT1M)',
-    'sum(precipitation_amount PT2H)',
-    'sum(precipitation_amount PT3H)',
-    'sum(precipitation_amount PT6H)',
-    'sum(precipitation_amount PT9H)'
-  ];
-
-  const apiUrl = `https://frost.met.no/observations/availableTimeSeries/v0.jsonld?elements=${encodeURIComponent(elements.join(','))}&sources=${encodeURIComponent(sourceId)}`;
+  let apiUrl = `https://frost.met.no/observations/availableTimeSeries/v0.jsonld?sources=${encodeURIComponent(sourceId)}`;
+  if (elements) {
+    apiUrl += `&elements=${encodeURIComponent(elements)}`;
+  }
 
   try {
     const response = await fetch(apiUrl, {
-      headers: { 'Authorization': `Basic ${auth}` }
+      headers: {
+        'Authorization': `Basic ${auth}`
+      }
     });
 
-    if (!response.ok) throw new Error(`Frost API responded with status ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Frost API responded with status ${response.status}`);
+    }
+
     const data = await response.json();
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.json(data);
   } catch (err) {
-    console.error('Error fetching available time series:', err.message);
+    console.error('Error fetching available time series:', err);
     res.status(500).json({ error: 'Failed to fetch available time series' });
   }
 });
