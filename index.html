@@ -47,37 +47,74 @@
   }).addTo(map);
 
   // Load stations
-  fetch('https://laughing-garbanzo-yh5u.onrender.com/stations') // or load from static JSON if needed
-  .then(response => response.json())
-  .then(data => {
-    const stations = data.data;
+  const map = L.map('map').setView([65.0, 15.0], 5);
 
-    stations.forEach(station => {
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18,
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  const markers = L.markerClusterGroup();
+
+  const baseStationsUrl = 'https://frost-proxy.onrender.com/stations';
+  const precipStationsUrl = 'https://frost-proxy.onrender.com/stations?elements=sum(precipitation_amount P1D)';
+
+  let baseStations = {};
+  let precipStations = {};
+
+  Promise.all([
+    fetch(baseStationsUrl).then(res => res.json()),
+    fetch(precipStationsUrl).then(res => res.json())
+  ])
+  .then(([baseData, precipData]) => {
+    (baseData.data || []).forEach(station => {
+      baseStations[station.id] = station;
+    });
+
+    (precipData.data || []).forEach(station => {
+      precipStations[station.id] = station;
+    });
+
+    // Merge and render
+    const allStationIds = new Set([
+      ...Object.keys(baseStations),
+      ...Object.keys(precipStations)
+    ]);
+
+    allStationIds.forEach(stationId => {
+      const station = baseStations[stationId] || precipStations[stationId];
       const lat = station.geometry?.coordinates[1];
       const lon = station.geometry?.coordinates[0];
-      if (!lat || !lon) return;
 
-      const marker = L.marker([lat, lon]);
-
-      marker.on('click', () => {
-        marker.bindPopup('<div class="popup-content">Loading...</div>').openPopup();
-
-        fetch(`https://laughing-garbanzo-yh5u.onrender.com/available-timeseries?source=${station.id}`)
-        .then(res => res.json())
-        .then(obsData => {
-          const html = formatStationWithObservations(station, obsData);
-          marker.setPopupContent(html);
-        })
-        .catch(err => {
-          console.error('Error loading observations:', err);
-          marker.setPopupContent('<div class="popup-content">Failed to load observations.</div>');
+      if (lat && lon) {
+        const isPrecip = !!precipStations[stationId];
+        const marker = L.marker([lat, lon], {
+          icon: getColorMarker(isPrecip ? 'green' : 'orange')
         });
-      });
 
-      markers.addLayer(marker);
+        marker.on('click', () => {
+          marker.bindPopup('Loading...').openPopup();
+
+          fetch(`https://frost-proxy.onrender.com/available-timeseries?source=${station.id}`)
+          .then(res => res.json())
+          .then(obs => {
+            const html = formatCompactTooltipWithObservations(station, obs);
+            marker.setPopupContent(html);
+          })
+          .catch(err => {
+            marker.setPopupContent('Failed to load data');
+            console.error(err);
+          });
+        });
+
+        markers.addLayer(marker);
+      }
     });
 
     map.addLayer(markers);
+  })
+  .catch(err => {
+    console.error('Error loading stations:', err);
   });
 
   function formatStationWithObservations(station, obs) {
@@ -172,6 +209,17 @@
     .catch(err => {
       console.error('Chart error:', err);
       graphDiv.innerHTML = 'Error loading chart';
+    });
+  }
+
+  function getColorMarker(color) {
+    return new L.Icon({
+      iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
     });
   }
 </script>
