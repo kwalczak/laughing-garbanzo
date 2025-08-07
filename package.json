@@ -1,0 +1,9 @@
+{
+  "name": "frost-proxy",
+  "type": "commonjs",
+  "dependencies": {
+    "express": "^4.18.2",
+    "moment": "^2.29.4",
+    "node-fetch": "^2.6.9"
+  }
+}

@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Frost Map Viewer</title>
+
+  <!-- Leaflet + Clustering -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    #map { height: 100vh; width: 100%; }
+    .popup-content {
+      max-width: 600px;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow-x: auto;
+    }
+    .popup-content div {
+      margin: 0; padding: 0;
+    }
+    .popup-content strong {
+      display: inline-block;
+      min-width: 100px;
+    }
+    canvas {
+      max-width: 100%;
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<script>
+  const map = L.map('map').setView([65.0, 15.0], 5);
+  const markers = L.markerClusterGroup();
+  let chart = null;
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  // Load stations
+  fetch('http://localhost:3001/stations') // or load from static JSON if needed
+  .then(response => response.json())
+  .then(data => {
+    const stations = data.data;
+
+    stations.forEach(station => {
+      const lat = station.geometry?.coordinates[1];
+      const lon = station.geometry?.coordinates[0];
+      if (!lat || !lon) return;
+
+      const marker = L.marker([lat, lon]);
+
+      marker.on('click', () => {
+        marker.bindPopup('<div class="popup-content">Loading...</div>').openPopup();
+
+        fetch(`http://localhost:3001/available-timeseries?source=${station.id}`)
+        .then(res => res.json())
+        .then(obsData => {
+          const html = formatStationWithObservations(station, obsData);
+          marker.setPopupContent(html);
+        })
+        .catch(err => {
+          console.error('Error loading observations:', err);
+          marker.setPopupContent('<div class="popup-content">Failed to load observations.</div>');
+        });
+      });
+
+      markers.addLayer(marker);
+    });
+
+    map.addLayer(markers);
+  });
+
+  function formatStationWithObservations(station, obs) {
+    let html = `<div class="popup-content">`;
+    for (const [k, v] of Object.entries(station)) {
+      const val = (typeof v === 'object') ? JSON.stringify(v) : v;
+      html += `<div><strong>${k}:</strong> ${val}</div>`;
+    }
+
+    if (obs?.data?.length > 0) {
+      html += `<hr><div><strong>Observations:</strong></div>`;
+      obs.data.forEach(item => {
+        const uri = encodeURIComponent(item.uri);
+        html += `<div style="color:blue;cursor:pointer;text-decoration:underline;"
+                    onclick="fetchObservationUri('${uri}')">
+                  ${item.elementId} (${item.unit}) – ${item.status}
+                 </div>`;
+      });
+      html += `<div id="obs-graph" style="margin-top:10px;"></div>`;
+    } else {
+      html += `<div><em>No observations available</em></div>`;
+    }
+
+    html += `</div>`;
+    return html;
+  }
+  function fetchObservationUri(uri) {
+    const graphDiv = document.getElementById('obs-graph');
+    if (!graphDiv) return;
+    graphDiv.innerHTML = 'Loading chart...';
+
+    fetch(`http://localhost:3001/observations-by-uri?uri=${uri}`)
+    .then(res => res.json())
+    .then(data => {
+      const entries = data.data || [];
+
+      const labels = [];
+      const values = [];
+
+      entries.forEach(entry => {
+        const date = entry.referenceTime.substring(0, 10);
+        const obs = entry.observations?.[0];
+        if (obs) {
+          labels.push(date);
+          const val = obs.value === -1 ? null : obs.value;
+          values.push(val);
+        }
+      });
+
+      if (chart) chart.destroy();
+
+      const canvas = document.createElement('canvas');
+      graphDiv.innerHTML = '';
+      graphDiv.appendChild(canvas);
+
+      chart = new Chart(canvas, {
+        type: 'bar',  // 🔁 Changed from 'line' to 'bar'
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Observation values (last 5 days)',
+            data: values,
+            backgroundColor: 'rgba(0, 123, 255, 0.6)',
+            borderColor: 'rgba(0, 123, 255, 1)',
+            borderWidth: 1
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: {
+              title: { display: true, text: 'Date' }
+            },
+            y: {
+              beginAtZero: true,
+              title: { display: true, text: 'Value' }
+            }
+          },
+          plugins: {
+            tooltip: {
+              callbacks: {
+                label: context => {
+                  const val = context.raw;
+                  return val !== null ? `${val} mm` : 'No data';
+                }
+              }
+            }
+          }
+        }
+      });
+    })
+    .catch(err => {
+      console.error('Chart error:', err);
+      graphDiv.innerHTML = 'Error loading chart';
+    });
+  }
+</script>
+</body>
+</html>
