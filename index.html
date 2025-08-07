@@ -51,7 +51,6 @@
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <script>
   const map = L.map('map').setView([65.0, 15.0], 5);
 
@@ -61,8 +60,7 @@
   }).addTo(map);
 
   const markers = L.markerClusterGroup();
-
-  const proxyUrl = 'https://laughing-garbanzo-yh5u.onrender.com'; // ✅ Your proxy
+  const proxyUrl = 'https://laughing-garbanzo-yh5u.onrender.com';
 
   const baseStationsUrl = `${proxyUrl}/stations`;
   const precipStationsUrl = `${proxyUrl}/stations?elements=sum(precipitation_amount P1D)`;
@@ -80,56 +78,58 @@
     });
   }
 
+  function bindClick(marker, station) {
+    marker.on('click', () => {
+      marker.bindPopup('<div class="tooltip-content">Loading...</div>').openPopup();
+
+      fetch(`${proxyUrl}/available-timeseries?source=${encodeURIComponent(station.id)}`)
+      .then(res => res.json())
+      .then(obs => {
+        const html = formatCompactTooltipWithObservations(station, obs);
+        marker.setPopupContent(html);
+        const uri = extractFirstUri(obs);
+        if (uri) fetchObservationUri(uri);
+      })
+      .catch(err => {
+        marker.setPopupContent('Failed to load data');
+        console.error(err);
+      });
+    });
+  }
+
   Promise.all([
     fetch(baseStationsUrl).then(res => res.json()),
     fetch(precipStationsUrl).then(res => res.json())
   ])
   .then(([baseData, precipData]) => {
-    const baseStations = {};
-    const precipStations = {};
+    const baseStations = baseData.data || [];
+    const precipStations = precipData.data || [];
 
-    (baseData.data || []).forEach(station => {
-      baseStations[station.id] = station;
-    });
+    const addedStationIds = new Set();
 
-    (precipData.data || []).forEach(station => {
-      precipStations[station.id] = station;
-    });
-
-    const allStationIds = new Set([
-      ...Object.keys(baseStations),
-      ...Object.keys(precipStations)
-    ]);
-
-    allStationIds.forEach(stationId => {
-      const station = baseStations[stationId] || precipStations[stationId];
+    // 🟧 Orange markers first
+    baseStations.forEach(station => {
       const lat = station.geometry?.coordinates[1];
       const lon = station.geometry?.coordinates[0];
-
-      if (lat && lon) {
-        const isPrecip = Object.prototype.hasOwnProperty.call(precipStations, stationId);
-
+      if (lat && lon && station.id) {
         const marker = L.marker([lat, lon], {
-          icon: getColorMarker(isPrecip ? 'green' : 'orange')
+          icon: getColorMarker('orange')
         });
+        bindClick(marker, station);
+        markers.addLayer(marker);
+        addedStationIds.add(station.id);
+      }
+    });
 
-        marker.on('click', () => {
-          marker.bindPopup('<div class="tooltip-content">Loading...</div>').openPopup();
-
-          fetch(`${proxyUrl}/available-timeseries?source=${encodeURIComponent(station.id)}`)
-          .then(res => res.json())
-          .then(obs => {
-            const html = formatCompactTooltipWithObservations(station, obs);
-            marker.setPopupContent(html);
-            const uri = extractFirstUri(obs);
-            if (uri) fetchObservationUri(uri);
-          })
-          .catch(err => {
-            marker.setPopupContent('Failed to load data');
-            console.error(err);
-          });
+    // 🟩 Green markers next (skip already added)
+    precipStations.forEach(station => {
+      const lat = station.geometry?.coordinates[1];
+      const lon = station.geometry?.coordinates[0];
+      if (lat && lon && station.id && !addedStationIds.has(station.id)) {
+        const marker = L.marker([lat, lon], {
+          icon: getColorMarker('green')
         });
-
+        bindClick(marker, station);
         markers.addLayer(marker);
       }
     });
