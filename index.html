@@ -85,6 +85,9 @@
 
   function bindClick(marker, station) {
     marker.on('click', () => {
+      // Always bind a fresh popup when clicked
+      marker.unbindPopup(); // <- prevent stale state
+
       marker.bindPopup('<div class="tooltip-content">Loading...</div>').openPopup();
 
       fetch(`${proxyUrl}/available-timeseries?source=${encodeURIComponent(station.id)}`)
