@@ -88,7 +88,6 @@
       });
     });
   }
-
   function formatCompactTooltipWithObservations(station, obsData) {
     let html = '<div class="tooltip-content">';
     for (const [key, value] of Object.entries(station)) {
@@ -99,7 +98,7 @@
 
     const series = obsData?.data || [];
     if (series.length > 0) {
-      html += `<hr><div><strong>Available observations:</strong></div>`;
+      html += `<hr><div><strong>Available rainfall observations:</strong></div>`;
       series.forEach((item) => {
         const label = `${item.elementId} (${item.timeResolution})`;
         html += `<div style="cursor:pointer;text-decoration:underline;color:blue;" onclick="fetchObservationUri('${encodeURIComponent(
@@ -108,8 +107,44 @@
       });
     }
 
+    // 🆕 Add a link to show all available observations
+    html += `<div style="margin-top:8px;">
+    <button onclick="showAllAvailableObservations('${station.id}', [${station.geometry?.coordinates[1]}, ${station.geometry?.coordinates[0]}])">
+      Show all available observations
+    </button>
+  </div>`;
+
     html += `<div id="obs-graph"></div></div>`;
     return html;
+  }
+
+  function showAllAvailableObservations(stationId, latlng) {
+    fetch(`${proxyUrl}/available-timeseries?source=${encodeURIComponent(stationId)}`)
+    .then(res => res.json())
+    .then(data => {
+      const series = data?.data || [];
+      let content = `<div class="tooltip-content"><strong>All available observations:</strong><br/>`;
+      if (series.length === 0) {
+        content += `<div>No data available</div>`;
+      } else {
+        series.forEach((item) => {
+          content += `<div>${item.elementId} (${item.timeResolution || '—'})</div>`;
+        });
+      }
+      content += '</div>';
+
+      L.popup()
+      .setLatLng(latlng)
+      .setContent(content)
+      .openOn(map);
+    })
+    .catch(err => {
+      console.error('Error fetching all observations:', err);
+      L.popup()
+      .setLatLng(latlng)
+      .setContent('Error loading all available observations.')
+      .openOn(map);
+    });
   }
 
   function extractFirstUri(obsData) {
