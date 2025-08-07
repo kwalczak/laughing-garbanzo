@@ -1,18 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
+  <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Frost Map Viewer</title>
+  <title>Frost Map – Stations + Precipitation</title>
 
-  <!-- Leaflet + Clustering -->
+  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
-
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
   <style>
     #map {
@@ -20,40 +16,45 @@
       width: 100%;
     }
 
-    .popup-content {
+    .tooltip-content {
       max-width: 600px;
-      font-size: 12px;
+      font-size: 11px;
+      line-height: 1.3;
       white-space: nowrap;
       overflow-x: auto;
     }
 
-    .popup-content div {
+    .tooltip-content div {
       margin: 0;
       padding: 0;
     }
 
-    .popup-content strong {
+    .tooltip-content strong {
       display: inline-block;
       min-width: 100px;
+      font-weight: bold;
     }
 
-    canvas {
-      max-width: 100%;
+    #obs-graph {
+      margin-top: 10px;
+      width: 100%;
+      max-width: 600px;
     }
   </style>
 </head>
 <body>
 <div id="map"></div>
 
+<!-- Leaflet & MarkerCluster -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
   const map = L.map('map').setView([65.0, 15.0], 5);
-  let chart = null;
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-  }).addTo(map);
-
-  // Load stations
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: '&copy; OpenStreetMap contributors'
@@ -61,17 +62,32 @@
 
   const markers = L.markerClusterGroup();
 
-  const baseStationsUrl = 'https://laughing-garbanzo-yh5u.onrender.com/stations';
-  const precipStationsUrl = 'https://laughing-garbanzo-yh5u.onrender.com/stations?elements=sum(precipitation_amount P1D)';
+  const proxyUrl = 'https://laughing-garbanzo-yh5u.onrender.com'; // ✅ Your proxy
 
-  let baseStations = {};
-  let precipStations = {};
+  const baseStationsUrl = `${proxyUrl}/stations`;
+  const precipStationsUrl = `${proxyUrl}/stations?elements=sum(precipitation_amount P1D)`;
+
+  let chart = null;
+
+  function getColorMarker(color) {
+    return new L.Icon({
+      iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
+      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34],
+      shadowSize: [41, 41]
+    });
+  }
 
   Promise.all([
     fetch(baseStationsUrl).then(res => res.json()),
     fetch(precipStationsUrl).then(res => res.json())
   ])
   .then(([baseData, precipData]) => {
+    const baseStations = {};
+    const precipStations = {};
+
     (baseData.data || []).forEach(station => {
       baseStations[station.id] = station;
     });
@@ -80,7 +96,6 @@
       precipStations[station.id] = station;
     });
 
-    // Merge and render
     const allStationIds = new Set([
       ...Object.keys(baseStations),
       ...Object.keys(precipStations)
@@ -98,13 +113,15 @@
         });
 
         marker.on('click', () => {
-          marker.bindPopup('Loading...').openPopup();
+          marker.bindPopup('<div class="tooltip-content">Loading...</div>').openPopup();
 
-          fetch(`https://laughing-garbanzo-yh5u.onrender.com/available-timeseries?source=${station.id}`)
+          fetch(`${proxyUrl}/available-timeseries?source=${encodeURIComponent(station.id)}`)
           .then(res => res.json())
           .then(obs => {
             const html = formatCompactTooltipWithObservations(station, obs);
             marker.setPopupContent(html);
+            const uri = extractFirstUri(obs);
+            if (uri) fetchObservationUri(uri);
           })
           .catch(err => {
             marker.setPopupContent('Failed to load data');
@@ -122,66 +139,60 @@
     console.error('Error loading stations:', err);
   });
 
-  function formatStationWithObservations(station, obs) {
-    let html = `<div class="popup-content">`;
-    for (const [k, v] of Object.entries(station)) {
-      const val = (typeof v === 'object') ? JSON.stringify(v) : v;
-      html += `<div><strong>${k}:</strong> ${val}</div>`;
+  function formatCompactTooltipWithObservations(station, obsData) {
+    let html = '<div class="tooltip-content">';
+    for (const [key, value] of Object.entries(station)) {
+      if (value === null || value === undefined) continue;
+      const val = (typeof value === 'object') ? JSON.stringify(value) : value;
+      html += `<div><strong>${key}:</strong> ${val}</div>`;
     }
 
-    if (obs?.data?.length > 0) {
-      html += `<hr><div><strong>Observations:</strong></div>`;
-      obs.data.forEach(item => {
-        const uri = encodeURIComponent(item.uri);
-        html += `<div style="color:blue;cursor:pointer;text-decoration:underline;"
-                    onclick="fetchObservationUri('${uri}')">
-                  ${item.elementId} (${item.unit}) – ${item.status}
-                 </div>`;
+    const series = obsData?.data || [];
+    if (series.length > 0) {
+      html += `<hr><div><strong>Available observations:</strong></div>`;
+      series.forEach(item => {
+        const label = `${item.elementId} (${item.timeResolution})`;
+        html += `<div style="cursor:pointer;text-decoration:underline;color:blue;" onclick="fetchObservationUri('${encodeURIComponent(item.uri)}')">${label}</div>`;
       });
-      html += `<div id="obs-graph" style="margin-top:10px;"></div>`;
-    } else {
-      html += `<div><em>No observations available</em></div>`;
     }
 
-    html += `</div>`;
+    html += `<div id="obs-graph"></div></div>`;
     return html;
+  }
+
+  function extractFirstUri(obsData) {
+    const series = obsData?.data || [];
+    return series.length > 0 ? encodeURIComponent(series[0].uri) : null;
   }
 
   function fetchObservationUri(uri) {
     const graphDiv = document.getElementById('obs-graph');
-    if (!graphDiv) {
-      return;
-    }
+    if (!graphDiv) return;
     graphDiv.innerHTML = 'Loading chart...';
 
-    fetch(`https://laughing-garbanzo-yh5u.onrender.com/observations-by-uri?uri=${uri}`)
+    fetch(`${proxyUrl}/observations-by-uri?uri=${uri}`)
     .then(res => res.json())
     .then(data => {
       const entries = data.data || [];
-
-      const labels = [];
-      const values = [];
+      const labels = [], values = [];
 
       entries.forEach(entry => {
         const date = entry.referenceTime.substring(0, 10);
         const obs = entry.observations?.[0];
         if (obs) {
           labels.push(date);
-          const val = obs.value === -1 ? null : obs.value;
-          values.push(val);
+          values.push(obs.value === -1 ? null : obs.value);
         }
       });
 
-      if (chart) {
-        chart.destroy();
-      }
+      if (chart) chart.destroy();
 
       const canvas = document.createElement('canvas');
       graphDiv.innerHTML = '';
       graphDiv.appendChild(canvas);
 
       chart = new Chart(canvas, {
-        type: 'bar',  // 🔁 Changed from 'line' to 'bar'
+        type: 'bar',
         data: {
           labels: labels,
           datasets: [{
@@ -195,21 +206,16 @@
         options: {
           responsive: true,
           scales: {
-            x: {
-              title: {display: true, text: 'Date'}
-            },
+            x: { title: { display: true, text: 'Date' } },
             y: {
               beginAtZero: true,
-              title: {display: true, text: 'Value'}
+              title: { display: true, text: 'Value' }
             }
           },
           plugins: {
             tooltip: {
               callbacks: {
-                label: context => {
-                  const val = context.raw;
-                  return val !== null ? `${val} mm` : 'No data';
-                }
+                label: ctx => ctx.raw !== null ? `${ctx.raw} mm` : 'No data'
               }
             }
           }
@@ -219,17 +225,6 @@
     .catch(err => {
       console.error('Chart error:', err);
       graphDiv.innerHTML = 'Error loading chart';
-    });
-  }
-
-  function getColorMarker(color) {
-    return new L.Icon({
-      iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
-      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41]
     });
   }
 </script>
