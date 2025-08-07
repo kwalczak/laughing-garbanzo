@@ -4,13 +4,17 @@ const username = process.env.FROST_CLIENT_ID;
 const password = process.env.FROST_CLIENT_SECRET;
 
 const apiUrl = 'https://frost.met.no/sources/v0.jsonld?validtime=2025-01-01/now';
+const cors = require('cors');
+
 
 const express = require('express');
 const fetch = require('node-fetch'); // version 2
 const moment = require('moment');
 const app = express();
 const port = 3001;
-
+app.use(cors({
+  origin: 'https://laughing-garbanzo-web.onrender.com'  // 👈 allow your frontend
+}));
 const auth = Buffer.from(`${username}:${password}`).toString('base64');
 
 app.get('/stations', async (req, res) => {
