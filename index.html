@@ -96,7 +96,6 @@
       });
     });
   }
-
   Promise.all([
     fetch(baseStationsUrl).then(res => res.json()),
     fetch(precipStationsUrl).then(res => res.json())
@@ -105,9 +104,9 @@
     const baseStations = baseData.data || [];
     const precipStations = precipData.data || [];
 
-    const addedStationIds = new Set();
+    const stationMap = new Map();
 
-    // 🟧 Orange markers first
+    // 🟧 Add orange markers for all base stations
     baseStations.forEach(station => {
       const lat = station.geometry?.coordinates[1];
       const lon = station.geometry?.coordinates[0];
@@ -117,20 +116,20 @@
         });
         bindClick(marker, station);
         markers.addLayer(marker);
-        addedStationIds.add(station.id);
+        stationMap.set(station.id, marker); // store marker if needed later
       }
     });
 
-    // 🟩 Green markers next (skip already added)
+    // 🟩 Add green markers for all precip stations (regardless of existing orange marker)
     precipStations.forEach(station => {
       const lat = station.geometry?.coordinates[1];
       const lon = station.geometry?.coordinates[0];
-      if (lat && lon && station.id && !addedStationIds.has(station.id)) {
+      if (lat && lon && station.id) {
         const marker = L.marker([lat, lon], {
           icon: getColorMarker('green')
         });
         bindClick(marker, station);
-        markers.addLayer(marker);
+        markers.addLayer(marker); // this visually overrides the orange one in cluster
       }
     });
 
