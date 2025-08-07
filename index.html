@@ -1,21 +1,29 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Frost Map – Stations + Precipitation</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Frost Stations Map</title>
 
   <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"/>
+  <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet/dist/leaflet.css"
+  />
+  <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css"
+  />
+  <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css"
+  />
 
   <style>
     #map {
       height: 100vh;
       width: 100%;
     }
-
     .tooltip-content {
       max-width: 600px;
       font-size: 11px;
@@ -23,18 +31,15 @@
       white-space: nowrap;
       overflow-x: auto;
     }
-
     .tooltip-content div {
       margin: 0;
       padding: 0;
     }
-
     .tooltip-content strong {
       display: inline-block;
       min-width: 100px;
       font-weight: bold;
     }
-
     #obs-graph {
       margin-top: 10px;
       width: 100%;
@@ -45,36 +50,36 @@
 <body>
 <div id="map"></div>
 
-<!-- Leaflet & MarkerCluster -->
+<!-- Leaflet & MarkerCluster JS -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <script>
   const map = L.map('map').setView([65.0, 15.0], 5);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
-    attribution: '&copy; OpenStreetMap contributors'
+    attribution: '&copy; OpenStreetMap contributors',
   }).addTo(map);
 
   const markers = L.markerClusterGroup();
-  const proxyUrl = 'https://laughing-garbanzo-yh5u.onrender.com';
-
-  const baseStationsUrl = `${proxyUrl}/stations`;
-  const precipStationsUrl = `${proxyUrl}/stations?elements=sum(precipitation_amount P1D)`;
+  const proxyUrl = 'https://laughing-garbanzo-yh5u.onrender.com'; // Your proxy URL
+  const stationsUrl = `${proxyUrl}/stations`;
 
   let chart = null;
 
   function getColorMarker(color) {
     return new L.Icon({
       iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-${color}.png`,
-      shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+      shadowUrl:
+          'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       iconSize: [25, 41],
       iconAnchor: [12, 41],
       popupAnchor: [1, -34],
-      shadowSize: [41, 41]
+      shadowSize: [41, 41],
     });
   }
 
@@ -83,70 +88,77 @@
       marker.bindPopup('<div class="tooltip-content">Loading...</div>').openPopup();
 
       fetch(`${proxyUrl}/available-timeseries?source=${encodeURIComponent(station.id)}`)
-      .then(res => res.json())
-      .then(obs => {
+      .then((res) => res.json())
+      .then((obs) => {
         const html = formatCompactTooltipWithObservations(station, obs);
         marker.setPopupContent(html);
         const uri = extractFirstUri(obs);
-        if (uri) {
-          fetchObservationUri(uri);
-        }
+        if (uri) fetchObservationUri(uri);
       })
-      .catch(err => {
+      .catch((err) => {
         marker.setPopupContent('Failed to load data');
         console.error(err);
       });
     });
   }
-  Promise.all([
-    fetch(baseStationsUrl).then(res => res.json()),
-    fetch(precipStationsUrl).then(res => res.json())
-  ])
-  .then(([baseData, precipData]) => {
-    const baseStations = baseData.data || [];
-    const precipStations = precipData.data || [];
 
-    // Create a Set of clean base IDs that support precipitation
-    const precipIds = new Set(
-        precipStations.map(st => (st.sourceId || st.id).split(':')[0])
-    );
+  fetch(stationsUrl)
+  .then((res) => res.json())
+  .then((data) => {
+    const stations = data.data || [];
 
-    // Now render all base stations with color based on presence in precipIds
-    baseStations.forEach(station => {
+    stations.forEach((station) => {
       const lat = station.geometry?.coordinates[1];
       const lon = station.geometry?.coordinates[0];
-      if (lat && lon && station.id) {
-        const hasPrecip = precipIds.has(station.id);
+      if (!lat || !lon || !station.id) return;
+
+      // Check if station has available time series
+      fetch(`${proxyUrl}/available-timeseries?source=${encodeURIComponent(station.id)}`)
+      .then((res) => res.json())
+      .then((obs) => {
+        const hasObservations = (obs?.data || []).length > 0;
         const marker = L.marker([lat, lon], {
-          icon: getColorMarker(hasPrecip ? 'green' : 'orange')
+          icon: getColorMarker(hasObservations ? 'green' : 'orange'),
         });
         bindClick(marker, station);
         markers.addLayer(marker);
-      }
+      })
+      .catch((err) => {
+        console.error(
+            `Error fetching available-timeseries for ${station.id}`,
+            err
+        );
+        // fallback: orange marker
+        const marker = L.marker([lat, lon], {
+          icon: getColorMarker('orange'),
+        });
+        bindClick(marker, station);
+        markers.addLayer(marker);
+      });
     });
 
     map.addLayer(markers);
   })
-  .catch(err => {
+  .catch((err) => {
     console.error('Error loading stations:', err);
   });
 
   function formatCompactTooltipWithObservations(station, obsData) {
     let html = '<div class="tooltip-content">';
     for (const [key, value] of Object.entries(station)) {
-      if (value === null || value === undefined) {
-        continue;
-      }
-      const val = (typeof value === 'object') ? JSON.stringify(value) : value;
+      if (value === null || value === undefined) continue;
+      const val = typeof value === 'object' ? JSON.stringify(value) : value;
       html += `<div><strong>${key}:</strong> ${val}</div>`;
     }
 
     const series = obsData?.data || [];
     if (series.length > 0) {
       html += `<hr><div><strong>Available observations:</strong></div>`;
-      series.forEach(item => {
+      series.forEach((item) => {
         const label = `${item.elementId} (${item.timeResolution})`;
-        html += `<div style="cursor:pointer;text-decoration:underline;color:blue;" onclick="fetchObservationUri('${encodeURIComponent(item.uri)}')">${label}</div>`;
+        html += `<div style="cursor:pointer;text-decoration:underline;color:blue;" onclick="fetchObservationUri('${encodeURIComponent(
+            item.uri
+        )}')">${label}</div>`;
       });
     }
 
@@ -161,18 +173,17 @@
 
   function fetchObservationUri(uri) {
     const graphDiv = document.getElementById('obs-graph');
-    if (!graphDiv) {
-      return;
-    }
+    if (!graphDiv) return;
     graphDiv.innerHTML = 'Loading chart...';
 
     fetch(`${proxyUrl}/observations-by-uri?uri=${uri}`)
-    .then(res => res.json())
-    .then(data => {
+    .then((res) => res.json())
+    .then((data) => {
       const entries = data.data || [];
-      const labels = [], values = [];
+      const labels = [],
+          values = [];
 
-      entries.forEach(entry => {
+      entries.forEach((entry) => {
         const date = entry.referenceTime.substring(0, 10);
         const obs = entry.observations?.[0];
         if (obs) {
@@ -181,9 +192,7 @@
         }
       });
 
-      if (chart) {
-        chart.destroy();
-      }
+      if (chart) chart.destroy();
 
       const canvas = document.createElement('canvas');
       graphDiv.innerHTML = '';
@@ -193,34 +202,37 @@
         type: 'bar',
         data: {
           labels: labels,
-          datasets: [{
-            label: 'Observation values (last 5 days)',
-            data: values,
-            backgroundColor: 'rgba(0, 123, 255, 0.6)',
-            borderColor: 'rgba(0, 123, 255, 1)',
-            borderWidth: 1
-          }]
+          datasets: [
+            {
+              label: 'Observation values (last 5 days)',
+              data: values,
+              backgroundColor: 'rgba(0, 123, 255, 0.6)',
+              borderColor: 'rgba(0, 123, 255, 1)',
+              borderWidth: 1,
+            },
+          ],
         },
         options: {
           responsive: true,
           scales: {
-            x: {title: {display: true, text: 'Date'}},
+            x: { title: { display: true, text: 'Date' } },
             y: {
               beginAtZero: true,
-              title: {display: true, text: 'Value'}
-            }
+              title: { display: true, text: 'Value' },
+            },
           },
           plugins: {
             tooltip: {
               callbacks: {
-                label: ctx => ctx.raw !== null ? `${ctx.raw} mm` : 'No data'
-              }
-            }
-          }
-        }
+                label: (ctx) =>
+                    ctx.raw !== null ? `${ctx.raw} mm` : 'No data',
+              },
+            },
+          },
+        },
       });
     })
-    .catch(err => {
+    .catch((err) => {
       console.error('Chart error:', err);
       graphDiv.innerHTML = 'Error loading chart';
     });
