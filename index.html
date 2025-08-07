@@ -47,7 +47,7 @@
   }).addTo(map);
 
   // Load stations
-  fetch('http://localhost:3001/stations') // or load from static JSON if needed
+  fetch('https://laughing-garbanzo-yh5u.onrender.com/stations') // or load from static JSON if needed
   .then(response => response.json())
   .then(data => {
     const stations = data.data;
@@ -62,7 +62,7 @@
       marker.on('click', () => {
         marker.bindPopup('<div class="popup-content">Loading...</div>').openPopup();
 
-        fetch(`http://localhost:3001/available-timeseries?source=${station.id}`)
+        fetch(`https://laughing-garbanzo-yh5u.onrender.com/available-timeseries?source=${station.id}`)
         .then(res => res.json())
         .then(obsData => {
           const html = formatStationWithObservations(station, obsData);
@@ -109,7 +109,7 @@
     if (!graphDiv) return;
     graphDiv.innerHTML = 'Loading chart...';
 
-    fetch(`http://localhost:3001/observations-by-uri?uri=${uri}`)
+    fetch(`https://laughing-garbanzo-yh5u.onrender.com/observations-by-uri?uri=${uri}`)
     .then(res => res.json())
     .then(data => {
       const entries = data.data || [];
