@@ -107,7 +107,8 @@
       const lon = station.geometry?.coordinates[0];
 
       if (lat && lon) {
-        const isPrecip = !!precipStations[stationId];
+        const isPrecip = Object.prototype.hasOwnProperty.call(precipStations, stationId);
+
         const marker = L.marker([lat, lon], {
           icon: getColorMarker(isPrecip ? 'green' : 'orange')
         });
