@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Frost Map – Stations + Precipitation</title>
 
@@ -88,7 +88,9 @@
         const html = formatCompactTooltipWithObservations(station, obs);
         marker.setPopupContent(html);
         const uri = extractFirstUri(obs);
-        if (uri) fetchObservationUri(uri);
+        if (uri) {
+          fetchObservationUri(uri);
+        }
       })
       .catch(err => {
         marker.setPopupContent('Failed to load data');
@@ -96,50 +98,32 @@
       });
     });
   }
-
   Promise.all([
     fetch(baseStationsUrl).then(res => res.json()),
     fetch(precipStationsUrl).then(res => res.json())
   ])
   .then(([baseData, precipData]) => {
-    const stationMap = new Map();
+    const baseStations = baseData.data || [];
+    const precipStations = precipData.data || [];
 
-// 🟧 Add base stations
-    for (const station of baseData.data || []) {
-      stationMap.set(station.id, {
-        ...station,
-        hasPrecipitation: false
-      });
-    }
+    // Create a Set of clean base IDs that support precipitation
+    const precipIds = new Set(
+        precipStations.map(st => (st.sourceId || st.id).split(':')[0])
+    );
 
-// 🟩 Add/update precip stations
-    for (const station of precipData.data || []) {
-      const rawId = station.sourceId || station.id; // fallback if needed
-      const cleanId = rawId.split(':')[0];
-
-      if (stationMap.has(cleanId)) {
-        stationMap.get(cleanId).hasPrecipitation = true;
-      } else {
-        stationMap.set(cleanId, {
-          ...station,
-          id: cleanId,
-          hasPrecipitation: true
-        });
-      }
-    }
-
-    // 🗺️ Render all stations
-    for (const station of stationMap.values()) {
+    // Now render all base stations with color based on presence in precipIds
+    baseStations.forEach(station => {
       const lat = station.geometry?.coordinates[1];
       const lon = station.geometry?.coordinates[0];
-      if (lat && lon) {
+      if (lat && lon && station.id) {
+        const hasPrecip = precipIds.has(station.id);
         const marker = L.marker([lat, lon], {
-          icon: getColorMarker(station.hasPrecipitation ? 'green' : 'orange')
+          icon: getColorMarker(hasPrecip ? 'green' : 'orange')
         });
         bindClick(marker, station);
         markers.addLayer(marker);
       }
-    }
+    });
 
     map.addLayer(markers);
   })
@@ -150,7 +134,9 @@
   function formatCompactTooltipWithObservations(station, obsData) {
     let html = '<div class="tooltip-content">';
     for (const [key, value] of Object.entries(station)) {
-      if (value === null || value === undefined) continue;
+      if (value === null || value === undefined) {
+        continue;
+      }
       const val = (typeof value === 'object') ? JSON.stringify(value) : value;
       html += `<div><strong>${key}:</strong> ${val}</div>`;
     }
@@ -175,7 +161,9 @@
 
   function fetchObservationUri(uri) {
     const graphDiv = document.getElementById('obs-graph');
-    if (!graphDiv) return;
+    if (!graphDiv) {
+      return;
+    }
     graphDiv.innerHTML = 'Loading chart...';
 
     fetch(`${proxyUrl}/observations-by-uri?uri=${uri}`)
@@ -193,7 +181,9 @@
         }
       });
 
-      if (chart) chart.destroy();
+      if (chart) {
+        chart.destroy();
+      }
 
       const canvas = document.createElement('canvas');
       graphDiv.innerHTML = '';
@@ -214,10 +204,10 @@
         options: {
           responsive: true,
           scales: {
-            x: { title: { display: true, text: 'Date' } },
+            x: {title: {display: true, text: 'Date'}},
             y: {
               beginAtZero: true,
-              title: { display: true, text: 'Value' }
+              title: {display: true, text: 'Value'}
             }
           },
           plugins: {
