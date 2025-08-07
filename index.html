@@ -61,8 +61,8 @@
 
   const markers = L.markerClusterGroup();
 
-  const baseStationsUrl = 'https://frost-proxy.onrender.com/stations';
-  const precipStationsUrl = 'https://frost-proxy.onrender.com/stations?elements=sum(precipitation_amount P1D)';
+  const baseStationsUrl = 'https://laughing-garbanzo-yh5u.onrender.com/stations';
+  const precipStationsUrl = 'https://laughing-garbanzo-yh5u.onrender.com/stations?elements=sum(precipitation_amount P1D)';
 
   let baseStations = {};
   let precipStations = {};
@@ -100,7 +100,7 @@
         marker.on('click', () => {
           marker.bindPopup('Loading...').openPopup();
 
-          fetch(`https://frost-proxy.onrender.com/available-timeseries?source=${station.id}`)
+          fetch(`https://laughing-garbanzo-yh5u.onrender.com/available-timeseries?source=${station.id}`)
           .then(res => res.json())
           .then(obs => {
             const html = formatCompactTooltipWithObservations(station, obs);
